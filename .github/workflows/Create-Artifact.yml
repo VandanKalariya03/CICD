@@ -1,0 +1,99 @@
+name: Node.js CI with Docker
+
+on:
+  push:
+    branches:
+      - main  # Adjust the branch as werndeeddddd
+      
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: "development"
+
+    env:
+      DOCKER_USERNAME: ${{ fromJson(secrets.SECRETS).DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ fromJson(secrets.SECRETS).DOCKER_PASSWORD }}
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '14'  # Adjust the Node.js version as neededd
+
+    - name: Install Dependencies
+      run: npm install
+
+    # - name: Build Docker Image
+    #   run: docker build -t pradippipaliya/ci-cd .
+
+    # - name: Login to Docker Hub
+    #   uses: docker/login-action@v3
+    #   with:
+    #     username: ${{ secrets.DOCKER_USERNAME }}
+    #     password: ${{ secrets.DOCKER_PASSWORD }}
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ env.DOCKER_USERNAME }}
+        password: ${{ env.DOCKER_PASSWORD }} 
+
+    
+    # - name: Extract
+    #   id: extract
+    #   run: |
+    #     DOCKER_USERNAME=$(echo "$SECRETS" | jq -r '.DOCKER_USERNAME')
+    #     DOCKER_PASSWORD=$(echo "$SECRETS" | jq -r '.DOCKER_PASSWORD')
+    #     echo "DOCKER_USERNAME=$DOCKER_USERNAME" >> $GITHUB_ENV
+    #     echo "DOCKER_PASSWORD=$DOCKER_PASSWORD" >> $GITHUB_ENV
+
+    # - name: Login to Docker registry
+    #   run: |
+    #     docker login -u "$DOCKER_USERNAME" -p "$DOCKER_PASSWORD"
+    
+    # - name: Push Docker Image to Docker Hub
+    #   run: docker push pradippipaliya/ci-cd 
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v1
+
+    - name: Build and Push Docker Image
+      uses: docker/build-push-action@v2
+      with:
+        # context: .
+        # file: .Dockerfile  # Adjust path to Dockerfile as needed
+        # platforms: linux/amd64  # Adjust platforms as needed
+        push: true
+        tags: pradippipaliya/ci-cd:latest
+
+    - id: 'auth'
+      uses: 'google-github-actions/auth@v1'
+      with:
+        credentials_json: '${{ secrets.GCP_SA_KEY }}'
+
+    - name: Set up Google Cloud
+      uses: google-github-actions/setup-gcloud@v2
+      with:
+        service_account_key: ${{ secrets.GCP_SA_KEY }}          
+        project_id: pub-sub-416205
+        export_default_credentials: true
+
+    - name: Publish message to Pub/Sub
+      run: |
+        gcloud pubsub topics publish ${{secrets.TOPIC_NAME}} --message='{"branch":"main","commit":"${{ github.sha }}","image":"pradippipaliya/ci-cd:latest"}'
+      
+    # - name: Get SHA Digest
+    #   run: |
+    #     SHA_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' pradippipaliya/ci-cd)
+    #     printf '{  
+    #       "prop_1": "%s" 
+    #     }' "$SHA_DIGEST" >> sha_digest.json
+    # - name: Upload SHA digest in artifact
+    #   uses: actions/upload-artifact@v3
+    #   with:
+    #       name: sha_digest.json
+    #       path: ./sha_digest.json
+    

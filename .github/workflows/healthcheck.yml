@@ -1,0 +1,56 @@
+name: Node.js CI with Docker
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    environment: "development"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '14'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Build Docker Image
+        run: docker build -t pradippipaliya/ci-cd:latest .
+
+      - name: Run Container for Health Check
+        run: |
+          docker run -d --name ci-cd-container -p 80:80 pradippipaliya/ci-cd:latest
+          sleep 60  # Adjust sleep time based on how long it takes for your app to start
+
+      - name: Health Check
+        id: healthcheck
+        run: |
+          response=$(curl --write-out '%{http_code}' --silent --output /dev/null localhost:80/health)  # Adjust the health check endpoint
+          if [ "$response" -ne 200 ]; then
+            echo "Health check failed!"
+            exit 1
+          fi
+          echo "::set-output name=status::success"
+
+      - name: Login to Docker Hub
+        if: steps.healthcheck.outputs.status == 'success'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ env.DOCKER_USERNAME }}
+          password: ${{ env.DOCKER_PASSWORD }} 
+
+      - name: Push Docker Image to Docker Hub
+        if: steps.healthcheck.outputs.status == 'success'
+        run: docker push pradippipaliya/ci-cd:latest
+
+      # Continue with the rest of your job steps, following the same pattern:
+      # Use the `if: steps.healthcheck.outputs.status == 'success'` condition
+      # to ensure they only run if the health check passed.
